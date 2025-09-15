@@ -3,7 +3,7 @@ name = "mysite"
 version = "0.1.0"
 description = "My FastAPI website"
 authors = ["Your Name <your.email@example.com>"]
-readme = "README.md"
+#readme = "README.md"
 packages = [{include = "app"}]
 
 [tool.poetry.dependencies]

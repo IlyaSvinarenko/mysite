@@ -14,8 +14,8 @@ COPY pyproject.toml poetry.lock* ./
 # Устанавливаем Poetry
 RUN pip install poetry
 
-# Устанавливаем зависимости проекта
-RUN poetry install
+# Устанавливаем зависимости проекта (без установки текущего проекта)
+RUN poetry install --no-root
 
 # Копируем исходный код
 COPY . .
