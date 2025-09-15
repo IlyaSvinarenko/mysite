@@ -22,14 +22,12 @@ jobs:
 
       - name: Install Poetry
         run: |
-          curl -sSL https://install.python-poetry.org | python -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          python -m pip install --upgrade pip
+          pip install poetry
 
-      - name: Generate poetry.lock if not exists
+      - name: Install dependencies
         run: |
-          if [ ! -f poetry.lock ]; then
-            poetry lock --no-update
-          fi
+          poetry install
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
