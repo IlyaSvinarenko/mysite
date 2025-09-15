@@ -1,18 +1,23 @@
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from app.routes import main, auth
+from app.database import engine, Base
+from app.models import user
 
-app = FastAPI()
+# Создаем таблицы в БД (для разработки)
+async def create_tables():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-@app.get("/", response_class=HTMLResponse)
+app = FastAPI(title="MySite")
+
+# Добавляем обработчик события запуска
+@app.on_event("startup")
+async def startup_event():
+    await create_tables()
+
+app.include_router(main.router)
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
+
+@app.get("/")
 async def root():
-    return """
-    <html>
-        <head>
-            <title>MySite</title>
-        </head>
-        <body>
-            <h1>Добро пожаловать на мой сайт!</h1>
-            <p>Это стартовая страница моего FastAPI приложения.</p>
-        </body>
-    </html>
-    """
+    return {"message": "Welcome to MySite"}
