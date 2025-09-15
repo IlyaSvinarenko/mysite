@@ -1,8 +1,10 @@
 [tool.poetry]
 name = "mysite"
 version = "0.1.0"
-description = ""
-authors = ["Your Name <you@example.com>"]
+description = "My FastAPI website"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "app"}]
 
 [tool.poetry.dependencies]
 python = "^3.12"
