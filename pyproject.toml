@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "mysite"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.104.1"
+uvicorn = {extras = ["standard"], version = "^0.24.0"}
+
+[build-system]
+requires = ["poetry-core"]
+build-back = "poetry-core"
