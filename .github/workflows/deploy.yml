@@ -51,27 +51,35 @@ jobs:
           SERVER_LOGIN: ${{ secrets.SERVER_LOGIN }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+          DB_URL: ${{ secrets.DB_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
         run: |
           echo "$SSH_PRIVATE_KEY" > private_key.pem
           chmod 600 private_key.pem
           mkdir -p ~/.ssh
           ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
 
-          # Команда для деплоя на сервер
-          ssh -i private_key.pem $SERVER_LOGIN@$SERVER_IP "
-            # Логинимся в GitHub Container Registry
-            echo '$DEPLOY_TOKEN' | sudo docker login ghcr.io -u ilyasvinarenko --password-stdin
+          # Увеличиваем таймауты SSH и разбиваем команды на части
+          SSH_OPTS="-o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=5"
 
-            # Останавливаем и удаляем старый контейнер
+          # Логинимся в GitHub Container Registry
+          ssh $SSH_OPTS -i private_key.pem $SERVER_LOGIN@$SERVER_IP "
+            echo '$DEPLOY_TOKEN' | sudo docker login ghcr.io -u ilyasvinarenko --password-stdin
+          "
+
+          # Останавливаем и удаляем старый контейнер
+          ssh $SSH_OPTS -i private_key.pem $SERVER_LOGIN@$SERVER_IP "
             sudo docker stop mysite || true
             sudo docker rm mysite || true
+          "
 
-            # Запускаем новый контейнер с переменными окружения
+          # Запускаем новый контейнер
+          ssh $SSH_OPTS -i private_key.pem $SERVER_LOGIN@$SERVER_IP "
             sudo docker run -d \
               --name mysite \
               --network=app-network \
-              -e DB_URL=${{ secrets.DB_URL }} \
-              -e SECRET_KEY=${{ secrets.SECRET_KEY }} \
+              -e DB_URL='$DB_URL' \
+              -e SECRET_KEY='$SECRET_KEY' \
               -p 8000:8000 \
               ghcr.io/ilyasvinarenko/mysite:${{ github.sha }}
           "
