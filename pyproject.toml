@@ -15,7 +15,6 @@ alembic = "^1.16.5"
 python-jose = {extras = ["cryptography"], version = "^3.5.0"}
 passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 python-multipart = "^0.0.20"
-
 asyncpg = "^0.30.0"
 email-validator = "^2.3.0"
 aiosqlite = "^0.21.0"
