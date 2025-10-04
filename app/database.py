@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase
 from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine, AsyncSession
 
-database_url = os.getenv("DB_URL", "postgresql://user:password@postgres:5432/mydatabase")
+database_url = os.getenv("DB_URL", "postgresql+asyncpg://user:password@postgres:5432/mydatabase")
 engine = create_async_engine(url=database_url)
 async_session_maker = async_sessionmaker(engine, class_=AsyncSession)
 
