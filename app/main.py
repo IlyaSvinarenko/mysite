@@ -1,23 +1,37 @@
-from fastapi import FastAPI
-from app.routes import main, auth
-from app.database import engine, Base
-from app.models import user
+from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
+from fastapi.exceptions import HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from app.exceptions import TokenExpiredException, TokenNoFoundException
+from app.users.router import router as users_router
+from app.chat.router import router as chat_router
 
-# Создаем таблицы в БД (для разработки)
-async def create_tables():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+app = FastAPI()
+app.mount('/static', StaticFiles(directory='app/static'), name='static')
 
-app = FastAPI(title="MySite")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Добавляем обработчик события запуска
-@app.on_event("startup")
-async def startup_event():
-    await create_tables()
+app.include_router(users_router)
+app.include_router(chat_router)
 
-app.include_router(main.router)
-app.include_router(auth.router, prefix="/auth", tags=["auth"])
 
 @app.get("/")
-async def root():
-    return {"message": "Welcome to MySite"}
+async def redirect_to_auth():
+    return RedirectResponse(url="/auth")
+
+
+@app.exception_handler(TokenExpiredException)
+async def token_expired_exception_handler(request: Request, exc: HTTPException):
+    return RedirectResponse(url="/auth")
+
+
+@app.exception_handler(TokenNoFoundException)
+async def token_no_found_exception_handler(request: Request, exc: HTTPException):
+    return RedirectResponse(url="/auth")

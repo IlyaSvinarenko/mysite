@@ -1,25 +1,14 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
 import os
+from sqlalchemy import func
+from datetime import datetime
+from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase
+from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine, AsyncSession
 
-# Получаем URL базы данных из переменных окружения
-DB_URL = os.getenv("DB_URL", "postgresql+asyncpg://user:password@localhost:5432/mydatabase")
+database_url = os.getenv("DB_URL", "postgresql+asyncpg://user:password@localhost:5432/mysite")
+engine = create_async_engine(url=database_url)
+async_session_maker = async_sessionmaker(engine, class_=AsyncSession)
 
-# Создаем асинхронный движок
-engine = create_async_engine(DB_URL, echo=True)
 
-# Создаем фабрику сессий
-AsyncSessionLocal = sessionmaker(
-    engine, class_=AsyncSession, expire_on_commit=False
-)
-
-Base = declarative_base()
-
-# Зависимость для получения сессии БД
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+class Base(AsyncAttrs, DeclarativeBase):
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
