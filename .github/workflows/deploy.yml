@@ -81,6 +81,7 @@ jobs:
               --network=app-network \
               -e DB_URL='$DB_URL' \
               -e SECRET_KEY='$SECRET_KEY' \
+              -e ALGORITHM='HS256' \
               -p 8000:8000 \
               ghcr.io/ilyasvinarenko/mysite:${{ github.sha }}
           "
