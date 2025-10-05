@@ -1,4 +1,4 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from typing import List, Dict
@@ -7,7 +7,7 @@ from app.chat.schemas import MessageRead, MessageCreate
 from app.users.dao import UsersDAO
 from app.users.dependencies import get_current_user
 from app.users.models import User
-import asyncio
+import json
 import logging
 
 router = APIRouter(prefix='/chat', tags=['Chat'])
@@ -17,51 +17,114 @@ templates = Jinja2Templates(directory='app/templates')
 active_connections: Dict[int, WebSocket] = {}
 
 
-async def notify_user(user_id: int, message: dict):
-    """Отправить сообщение пользователю, если он подключен."""
-    if user_id in active_connections:
-        websocket = active_connections[user_id]
-        await websocket.send_json(message)
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[int, WebSocket] = {}
+
+    async def connect(self, websocket: WebSocket, user_id: int):
+        await websocket.accept()
+        self.active_connections[user_id] = websocket
+        logging.info(f"User {user_id} connected. Active connections: {len(self.active_connections)}")
+
+    def disconnect(self, user_id: int):
+        if user_id in self.active_connections:
+            del self.active_connections[user_id]
+            logging.info(f"User {user_id} disconnected. Active connections: {len(self.active_connections)}")
+
+    async def send_personal_message(self, message: dict, user_id: int):
+        if user_id in self.active_connections:
+            try:
+                await self.active_connections[user_id].send_json(message)
+            except Exception as e:
+                logging.error(f"Error sending message to user {user_id}: {e}")
+                self.disconnect(user_id)
+
+    async def broadcast(self, message: dict):
+        for user_id, connection in self.active_connections.items():
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logging.error(f"Error broadcasting to user {user_id}: {e}")
+                self.disconnect(user_id)
+
+
+manager = ConnectionManager()
 
 
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: int):
-    await websocket.accept()
-    active_connections[user_id] = websocket
+    await manager.connect(websocket, user_id)
     try:
         while True:
-            await asyncio.sleep(1)
+            data = await websocket.receive_text()
+            try:
+                message_data = json.loads(data)
+                # Обработка входящих сообщений
+                if message_data.get('type') == 'message':
+                    recipient_id = message_data.get('recipient_id')
+                    content = message_data.get('content')
+
+                    if recipient_id and content:
+                        # Сохраняем сообщение в БД
+                        message = await MessagesDAO.add(
+                            sender_id=user_id,
+                            recipient_id=recipient_id,
+                            content=content
+                        )
+
+                        # Отправляем сообщение получателю
+                        response_data = {
+                            'type': 'message',
+                            'id': message.id,
+                            'sender_id': user_id,
+                            'sender_name': await get_username(user_id),
+                            'recipient_id': recipient_id,
+                            'content': content,
+                            'created_at': message.created_at.isoformat()
+                        }
+
+                        await manager.send_personal_message(response_data, recipient_id)
+                        # Также отправляем обратно отправителю для подтверждения
+                        await manager.send_personal_message(response_data, user_id)
+
+            except json.JSONDecodeError:
+                await websocket.send_json({'error': 'Invalid JSON'})
+
     except WebSocketDisconnect:
-        active_connections.pop(user_id, None)
+        manager.disconnect(user_id)
+
+
+async def get_username(user_id: int) -> str:
+    """Получить имя пользователя по ID"""
+    user = await UsersDAO.find_one_or_none_by_id(user_id)
+    return user.name if user else f"User{user_id}"
 
 
 @router.get("/", response_class=HTMLResponse, summary="Chat Page")
-async def get_chat_page(request: Request, user_data: User = Depends(get_current_user)):
+async def get_chat_page(request: Request, current_user: User = Depends(get_current_user)):
     users_all = await UsersDAO.find_all()
-    return templates.TemplateResponse("chat.html",
-                                      {"request": request, "user": user_data, 'users_all': users_all})
+    # Исключаем текущего пользователя из списка
+    other_users = [user for user in users_all if user.id != current_user.id]
+    return templates.TemplateResponse("chat.html", {
+        "request": request,
+        "current_user": current_user,
+        "users_all": other_users
+    })
 
 
 @router.get("/messages/{user_id}", response_model=List[MessageRead])
 async def get_messages(user_id: int, current_user: User = Depends(get_current_user)):
-    return await MessagesDAO.get_messages_between_users(user_id_1=user_id, user_id_2=current_user.id) or []
-
-
-@router.post("/messages", response_model=MessageCreate)
-async def send_message(message: MessageCreate, current_user: User = Depends(get_current_user)):
-    await MessagesDAO.add(
-        sender_id=current_user.id,
-        content=message.content,
-        recipient_id=message.recipient_id
+    """Получить историю сообщений с конкретным пользователем"""
+    messages = await MessagesDAO.get_messages_between_users(
+        user_id_1=user_id,
+        user_id_2=current_user.id
     )
+    return messages or []
 
-    message_data = {
-        'sender_id': current_user.id,
-        'recipient_id': message.recipient_id,
-        'content': message.content,
-    }
 
-    await notify_user(message.recipient_id, message_data)
-    await notify_user(current_user.id, message_data)
-
-    return {'recipient_id': message.recipient_id, 'content': message.content, 'status': 'ok', 'msg': 'Message saved!'}
+@router.get("/users", response_model=List[dict])
+async def get_chat_users(current_user: User = Depends(get_current_user)):
+    """Получить список пользователей для чата"""
+    users_all = await UsersDAO.find_all()
+    other_users = [{"id": user.id, "name": user.name} for user in users_all if user.id != current_user.id]
+    return other_users

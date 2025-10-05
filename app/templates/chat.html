@@ -3,42 +3,383 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Мини-чат</title>
-    <link rel="stylesheet" type="text/css" href="/static/styles/chat.css">
+    <title>Чат</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+        }
+        .chat-container {
+            display: flex;
+            height: 100vh;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .users-sidebar {
+            width: 300px;
+            border-right: 1px solid #ddd;
+            background: #2c3e50;
+            color: white;
+            overflow-y: auto;
+        }
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-header {
+            padding: 20px;
+            background: #34495e;
+            color: white;
+            border-bottom: 1px solid #ddd;
+        }
+        .messages-container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #ecf0f1;
+        }
+        .message-input-container {
+            padding: 20px;
+            border-top: 1px solid #ddd;
+            background: white;
+        }
+        .message-input {
+            display: flex;
+            gap: 10px;
+        }
+        .message-input input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 25px;
+            outline: none;
+        }
+        .message-input button {
+            padding: 12px 24px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+        }
+        .message-input button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .user-item {
+            padding: 15px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid #34495e;
+            transition: background 0.3s;
+        }
+        .user-item:hover {
+            background: #34495e;
+        }
+        .user-item.active {
+            background: #3498db;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 12px 16px;
+            border-radius: 18px;
+            max-width: 70%;
+            position: relative;
+        }
+        .message.own {
+            background: #3498db;
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+        .message.other {
+            background: white;
+            border: 1px solid #ddd;
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+        }
+        .message-sender {
+            font-weight: bold;
+            margin-bottom: 4px;
+            font-size: 0.9em;
+        }
+        .message-content {
+            word-wrap: break-word;
+        }
+        .message-time {
+            font-size: 0.8em;
+            opacity: 0.7;
+            text-align: right;
+            margin-top: 4px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-online {
+            background: #2ecc71;
+        }
+        .status-offline {
+            background: #95a5a6;
+        }
+        .no-messages {
+            text-align: center;
+            color: #7f8c8d;
+            padding: 40px;
+            font-style: italic;
+        }
+        .connection-status {
+            padding: 10px 20px;
+            background: #34495e;
+            font-size: 0.9em;
+            border-bottom: 1px solid #2c3e50;
+        }
+        .connected {
+            color: #2ecc71;
+        }
+        .disconnected {
+            color: #e74c3c;
+        }
+    </style>
 </head>
 <body>
-<div class="chat-container">
-    <div class="user-list" id="userList">
-        <div class="user-item" data-user-id="{{ user.id }}">
-            Избранное
-        </div>
-        {% for chat in users_all %}
-            {% if chat.id != user.id %}
-                <div class="user-item" data-user-id="{{ chat.id }}">
-                    {{ chat.name }}
+    <div class="chat-container">
+        <!-- Сайдбар с пользователями -->
+        <div class="users-sidebar">
+            <div class="chat-header">
+                <h2>Пользователи</h2>
+                <div class="connection-status">
+                    Статус: <span id="connectionStatus" class="disconnected">Не подключен</span>
                 </div>
-            {% endif %}
-        {% endfor %}
-    </div>
-    <div class="chat-area">
-        <div class="chat-header" id="chatHeader">
-            <span>Мини-чат</span>
-            <button class="logout-button" id="logoutButton" onclick="logout()">Выход</button>
+            </div>
+            <div id="usersList">
+                {% for user in users_all %}
+                <div class="user-item" data-user-id="{{ user.id }}" data-user-name="{{ user.name }}">
+                    <span class="status-indicator status-offline" id="status-{{ user.id }}"></span>
+                    {{ user.name }}
+                </div>
+                {% endfor %}
+            </div>
         </div>
-        <div class="messages" id="messages">
-            <div class="welcome-message">Выберите чат для общения</div>
-        </div>
-        <div class="input-area">
-            <input type="text" id="messageInput" placeholder="Введите сообщение..." disabled>
-            <button id="sendButton" disabled>Отправить</button>
-        </div>
-    </div>
-</div>
 
-<script>
-    const currentUserId = parseInt("{{ user.id }}", 10);
-</script>
+        <!-- Область чата -->
+        <div class="chat-area">
+            <div class="chat-header">
+                <h2 id="currentChatTitle">Выберите пользователя для начала общения</h2>
+            </div>
 
-<script src="/static/js/chat.js"></script>
+            <!-- Контейнер сообщений -->
+            <div class="messages-container" id="messagesContainer">
+                <div class="no-messages" id="noMessages">
+                    Выберите пользователя слева, чтобы начать общение
+                </div>
+            </div>
+
+            <!-- Поле ввода сообщения -->
+            <div class="message-input-container">
+                <div class="message-input">
+                    <input type="text" id="messageInput" placeholder="Введите сообщение..." disabled>
+                    <button id="sendButton" disabled>Отправить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class Chat {
+            constructor() {
+                this.currentUser = {{ current_user.id }};
+                this.currentInterlocutor = null;
+                this.ws = null;
+                this.isConnected = false;
+
+                this.initializeEventListeners();
+                this.connectWebSocket();
+            }
+
+            initializeEventListeners() {
+                // Выбор пользователя
+                document.querySelectorAll('.user-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        this.selectUser(
+                            item.dataset.userId,
+                            item.dataset.userName
+                        );
+                    });
+                });
+
+                // Отправка сообщения
+                document.getElementById('sendButton').addEventListener('click', () => {
+                    this.sendMessage();
+                });
+
+                // Отправка по Enter
+                document.getElementById('messageInput').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.sendMessage();
+                    }
+                });
+            }
+
+            connectWebSocket() {
+                this.ws = new WebSocket(`ws://${window.location.host}/chat/ws/${this.currentUser}`);
+
+                this.ws.onopen = () => {
+                    this.isConnected = true;
+                    document.getElementById('connectionStatus').textContent = 'Подключен';
+                    document.getElementById('connectionStatus').className = 'connected';
+                    console.log('WebSocket connected');
+                };
+
+                this.ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        this.handleWebSocketMessage(data);
+                    } catch (error) {
+                        console.error('Error parsing message:', error);
+                    }
+                };
+
+                this.ws.onclose = () => {
+                    this.isConnected = false;
+                    document.getElementById('connectionStatus').textContent = 'Не подключен';
+                    document.getElementById('connectionStatus').className = 'disconnected';
+                    console.log('WebSocket disconnected');
+
+                    // Переподключение через 3 секунды
+                    setTimeout(() => this.connectWebSocket(), 3000);
+                };
+
+                this.ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                };
+            }
+
+            async selectUser(userId, userName) {
+                this.currentInterlocutor = parseInt(userId);
+
+                // Обновляем UI
+                document.querySelectorAll('.user-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                document.querySelector(`[data-user-id="${userId}"]`).classList.add('active');
+
+                document.getElementById('currentChatTitle').textContent = `Чат с ${userName}`;
+                document.getElementById('messageInput').disabled = false;
+                document.getElementById('sendButton').disabled = false;
+                document.getElementById('noMessages').style.display = 'none';
+
+                // Загружаем историю сообщений
+                await this.loadMessageHistory(userId);
+            }
+
+            async loadMessageHistory(userId) {
+                try {
+                    const response = await fetch(`/chat/messages/${userId}`);
+                    const messages = await response.json();
+
+                    const container = document.getElementById('messagesContainer');
+                    container.innerHTML = '';
+
+                    if (messages.length === 0) {
+                        const noMessages = document.createElement('div');
+                        noMessages.className = 'no-messages';
+                        noMessages.textContent = 'Нет сообщений. Начните общение!';
+                        container.appendChild(noMessages);
+                        return;
+                    }
+
+                    messages.forEach(message => {
+                        this.displayMessage(message);
+                    });
+
+                    this.scrollToBottom();
+                } catch (error) {
+                    console.error('Error loading message history:', error);
+                }
+            }
+
+            displayMessage(message) {
+                const container = document.getElementById('messagesContainer');
+                const noMessages = container.querySelector('.no-messages');
+                if (noMessages) {
+                    noMessages.remove();
+                }
+
+                const messageElement = document.createElement('div');
+                messageElement.className = `message ${message.sender_id === this.currentUser ? 'own' : 'other'}`;
+
+                const time = new Date(message.created_at).toLocaleTimeString('ru-RU', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                messageElement.innerHTML = `
+                    ${message.sender_id !== this.currentUser ?
+                        `<div class="message-sender">${message.sender_name || 'Пользователь'}</div>` : ''}
+                    <div class="message-content">${this.escapeHtml(message.content)}</div>
+                    <div class="message-time">${time}</div>
+                `;
+
+                container.appendChild(messageElement);
+                this.scrollToBottom();
+            }
+
+            sendMessage() {
+                const input = document.getElementById('messageInput');
+                const content = input.value.trim();
+
+                if (!content || !this.currentInterlocutor || !this.isConnected) {
+                    return;
+                }
+
+                const message = {
+                    type: 'message',
+                    recipient_id: this.currentInterlocutor,
+                    content: content
+                };
+
+                this.ws.send(JSON.stringify(message));
+                input.value = '';
+            }
+
+            handleWebSocketMessage(data) {
+                if (data.type === 'message') {
+                    // Показываем сообщение только если оно относится к текущему собеседнику
+                    if (data.sender_id === this.currentInterlocutor ||
+                        data.recipient_id === this.currentInterlocutor) {
+                        this.displayMessage(data);
+                    }
+                }
+            }
+
+            scrollToBottom() {
+                const container = document.getElementById('messagesContainer');
+                container.scrollTop = container.scrollHeight;
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+
+        // Инициализация чата после загрузки страницы
+        document.addEventListener('DOMContentLoaded', () => {
+            window.chat = new Chat();
+        });
+    </script>
 </body>
 </html>

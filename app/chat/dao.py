@@ -15,6 +15,6 @@ class MessagesDAO(BaseDAO):
                     and_(cls.model.sender_id == user_id_1, cls.model.recipient_id == user_id_2),
                     and_(cls.model.sender_id == user_id_2, cls.model.recipient_id == user_id_1)
                 )
-            ).order_by(cls.model.id)
+            ).order_by(cls.model.created_at)
             result = await session.execute(query)
             return result.scalars().all()
