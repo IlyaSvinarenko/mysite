@@ -5,45 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Авторизация/Регистрация</title>
     <style>
-        .container { max-width: 400px; margin: 50px auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .container { max-width: 400px; margin: 50px auto; padding: 20px; }
         .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        label { display: block; margin-bottom: 5px; }
         input[type="email"], input[type="text"], input[type="password"] {
-            width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;
+            width: 100%; padding: 8px; box-sizing: border-box;
         }
         button {
             width: 100%; padding: 10px; background: #007bff;
-            color: white; border: none; border-radius: 4px; cursor: pointer;
-            font-size: 16px;
+            color: white; border: none; cursor: pointer;
         }
-        button:hover { background: #0056b3; }
         .tabs { display: flex; margin-bottom: 20px; }
         .tab {
             flex: 1; padding: 10px; text-align: center;
-            cursor: pointer; border: 1px solid #ddd; background: #f8f9fa;
+            cursor: pointer; border: 1px solid #ddd;
         }
-        .tab.active { background: #007bff; color: white; border-color: #007bff; }
+        .tab.active { background: #007bff; color: white; }
         .form { display: none; }
         .form.active { display: block; }
         .message { padding: 10px; margin-bottom: 15px; border-radius: 4px; }
-        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2 style="text-align: center; margin-bottom: 20px;">Авторизация / Регистрация</h2>
-
         <div class="tabs">
             <div class="tab active" onclick="showForm('login')">Авторизация</div>
             <div class="tab" onclick="showForm('register')">Регистрация</div>
         </div>
 
         <!-- Форма авторизации -->
-        <form id="loginForm" class="form active" method="post" action="/auth/login/">
+        <form id="loginForm" class="form active" method="post" action="/auth/login">
             <div class="form-group">
                 <label for="login_email">Email:</label>
-                <input type="email" id="login_email" name="email" required>
+                <input type="email" id="login_email" name="username" required>
             </div>
             <div class="form-group">
                 <label for="login_password">Пароль:</label>
@@ -53,22 +49,18 @@
         </form>
 
         <!-- Форма регистрации -->
-        <form id="registerForm" class="form" method="post" action="/auth/register/">
+        <form id="registerForm" class="form" method="post" action="/auth/register">
             <div class="form-group">
                 <label for="reg_email">Email:</label>
                 <input type="email" id="reg_email" name="email" required>
             </div>
             <div class="form-group">
-                <label for="reg_name">Имя пользователя:</label>
-                <input type="text" id="reg_name" name="name" required>
+                <label for="reg_username">Имя пользователя:</label>
+                <input type="text" id="reg_username" name="username" required>
             </div>
             <div class="form-group">
                 <label for="reg_password">Пароль:</label>
                 <input type="password" id="reg_password" name="password" required>
-            </div>
-            <div class="form-group">
-                <label for="reg_password_check">Подтверждение пароля:</label>
-                <input type="password" id="reg_password_check" name="password_check" required>
             </div>
             <button type="submit">Зарегистрироваться</button>
         </form>
@@ -87,19 +79,8 @@
             document.querySelectorAll('.form').forEach(form => form.classList.remove('active'));
 
             // Активируем выбранный таб и форму
-            if (formType === 'login') {
-                document.querySelector('.tab:nth-child(1)').classList.add('active');
-                document.getElementById('loginForm').classList.add('active');
-            } else {
-                document.querySelector('.tab:nth-child(2)').classList.add('active');
-                document.getElementById('registerForm').classList.add('active');
-            }
-
-            // Очищаем сообщения при переключении форм
-            const messageDiv = document.querySelector('.message');
-            if (messageDiv) {
-                messageDiv.remove();
-            }
+            document.querySelector(`.tab:nth-child(${formType === 'login' ? 1 : 2})`).classList.add('active');
+            document.getElementById(formType + 'Form').classList.add('active');
         }
     </script>
 </body>
