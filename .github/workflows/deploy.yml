@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-
   workflow_dispatch:
 
 jobs:
@@ -45,46 +44,59 @@ jobs:
             ghcr.io/ilyasvinarenko/mysite:${{ github.sha }}
             ghcr.io/ilyasvinarenko/mysite:latest
 
+      - name: Clean up old Docker images on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_LOGIN }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "=== АВТОМАТИЧЕСКАЯ ОЧИСТКА СТАРЫХ ОБРАЗОВ ==="
+            
+            # Удаляем все остановленные контейнеры (безопасно)
+            docker container prune -f
+            
+            echo "Текущие образы mysite:"
+            docker images ghcr.io/ilyasvinarenko/mysite --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
+            
+            # Удаляем все образы mysite кроме последних 3 (по дате создания)
+            echo "Удаляем старые образы (кроме последних 3)..."
+            docker images ghcr.io/ilyasvinarenko/mysite --format "{{.ID}} {{.CreatedAt}}" | \
+              tail -n +2 | \
+              sort -rk2 | \
+              awk 'NR>3 {print $1}' | \
+              xargs -r docker rmi -f || true
+            
+            echo "Оставшиеся образы mysite:"
+            docker images ghcr.io/ilyasvinarenko/mysite --format "table {{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
+
       - name: Deploy to server
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
-          SERVER_LOGIN: ${{ secrets.SERVER_LOGIN }}
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
-          DB_URL: ${{ secrets.DB_URL }}
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          ALGORITHM: HS256
-        run: |
-          echo "$SSH_PRIVATE_KEY" > private_key.pem
-          chmod 600 private_key.pem
-          mkdir -p ~/.ssh
-          ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
-
-          # Увеличиваем таймауты SSH и разбиваем команды на части
-          SSH_OPTS="-o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=5"
-
-          # Логинимся в GitHub Container Registry
-          ssh $SSH_OPTS -i private_key.pem $SERVER_LOGIN@$SERVER_IP "
-            echo '$DEPLOY_TOKEN' | sudo docker login ghcr.io -u ilyasvinarenko --password-stdin
-          "
-
-          # Останавливаем и удаляем старый контейнер
-          ssh $SSH_OPTS -i private_key.pem $SERVER_LOGIN@$SERVER_IP "
-            sudo docker stop mysite || true
-            sudo docker rm mysite || true
-          "
-
-          # Запускаем новый контейнер
-          ssh $SSH_OPTS -i private_key.pem $SERVER_LOGIN@$SERVER_IP "
-            sudo docker run -d \
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_LOGIN }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "=== ДЕПЛОЙ НОВОЙ ВЕРСИИ ==="
+            
+            # Логинимся в GitHub Container Registry
+            echo "${{ secrets.DEPLOY_TOKEN }}" | docker login ghcr.io -u ilyasvinarenko --password-stdin
+            
+            # Останавливаем и удаляем старый контейнер
+            docker stop mysite || true
+            docker rm mysite || true
+            
+            # Скачиваем новый образ
+            docker pull ghcr.io/ilyasvinarenko/mysite:${{ github.sha }}
+            
+            # Запускаем новый контейнер
+            docker run -d \
               --name mysite \
               --network=app-network \
-              -e DB_URL='$DB_URL' \
-              -e SECRET_KEY='$SECRET_KEY' \
+              -e DB_URL='${{ secrets.DB_URL }}' \
+              -e SECRET_KEY='${{ secrets.SECRET_KEY }}' \
               -e ALGORITHM='HS256' \
               -p 8000:8000 \
               ghcr.io/ilyasvinarenko/mysite:${{ github.sha }}
-          "
-
-          # Очищаем временные файлы
-          rm -f private_key.pem
+            
+            echo "Деплой успешно завершен!"
