@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Чат</title>
+    <title>Чаты</title>
     <style>
         * {
             margin: 0;
@@ -23,7 +23,7 @@
             background: white;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
-        .users-sidebar {
+        .chats-sidebar {
             width: 300px;
             border-right: 1px solid #ddd;
             background: #2c3e50;
@@ -40,6 +40,9 @@
             background: #34495e;
             color: white;
             border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .messages-container {
             flex: 1;
@@ -71,20 +74,16 @@
             border-radius: 25px;
             cursor: pointer;
         }
-        .message-input button:disabled {
-            background: #bdc3c7;
-            cursor: not-allowed;
-        }
-        .user-item {
+        .chat-item {
             padding: 15px 20px;
             cursor: pointer;
             border-bottom: 1px solid #34495e;
             transition: background 0.3s;
         }
-        .user-item:hover {
+        .chat-item:hover {
             background: #34495e;
         }
-        .user-item.active {
+        .chat-item.active {
             background: #3498db;
         }
         .message {
@@ -120,69 +119,80 @@
             text-align: right;
             margin-top: 4px;
         }
-        .status-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-right: 8px;
-        }
-        .status-online {
-            background: #2ecc71;
-        }
-        .status-offline {
-            background: #95a5a6;
-        }
-        .no-messages {
+        .no-chats {
             text-align: center;
             color: #7f8c8d;
             padding: 40px;
             font-style: italic;
         }
-        .connection-status {
-            padding: 10px 20px;
-            background: #34495e;
-            font-size: 0.9em;
-            border-bottom: 1px solid #2c3e50;
+        .create-chat-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
         }
-        .connected {
-            color: #2ecc71;
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
         }
-        .disconnected {
-            color: #e74c3c;
+        .modal-content {
+            background: white;
+            margin: 10% auto;
+            padding: 20px;
+            border-radius: 8px;
+            width: 400px;
+            max-width: 90%;
+        }
+        .user-checkbox {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+        }
+        .user-checkbox input {
+            margin-right: 10px;
         }
     </style>
 </head>
 <body>
     <div class="chat-container">
-        <!-- Сайдбар с пользователями -->
-        <div class="users-sidebar">
+        <!-- Сайдбар с чатами -->
+        <div class="chats-sidebar">
             <div class="chat-header">
-                <h2>Пользователи</h2>
-                <div class="connection-status">
-                    Статус: <span id="connectionStatus" class="disconnected">Не подключен</span>
-                </div>
+                <h2>Мои чаты</h2>
+                <button class="create-chat-btn" onclick="showCreateChatModal()">+ Создать чат</button>
             </div>
-            <div id="usersList">
-                {% for user in users_all %}
-                <div class="user-item" data-user-id="{{ user.id }}" data-user-name="{{ user.name }}">
-                    <span class="status-indicator status-offline" id="status-{{ user.id }}"></span>
-                    {{ user.name }}
-                </div>
-                {% endfor %}
+            <div id="chatsList">
+                {% if user_chats %}
+                    {% for chat in user_chats %}
+                    <div class="chat-item" data-chat-id="{{ chat.id }}">
+                        <div>{{ chat.name or 'Без названия' }}</div>
+                        <small>Участников: {{ chat.participants|length }}</small>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="no-chats">У вас пока нет чатов</div>
+                {% endif %}
             </div>
         </div>
 
         <!-- Область чата -->
         <div class="chat-area">
             <div class="chat-header">
-                <h2 id="currentChatTitle">Выберите пользователя для начала общения</h2>
+                <h2 id="currentChatTitle">Выберите чат для общения</h2>
             </div>
 
             <!-- Контейнер сообщений -->
             <div class="messages-container" id="messagesContainer">
                 <div class="no-messages" id="noMessages">
-                    Выберите пользователя слева, чтобы начать общение
+                    Выберите чат слева, чтобы начать общение
                 </div>
             </div>
 
@@ -196,11 +206,32 @@
         </div>
     </div>
 
+    <!-- Модальное окно создания чата -->
+    <div id="createChatModal" class="modal">
+        <div class="modal-content">
+            <h3>Создать новый чат</h3>
+            <input type="text" id="chatNameInput" placeholder="Название чата (необязательно)">
+            <h4>Выберите участников:</h4>
+            <div id="usersList">
+                {% for user in all_users %}
+                <div class="user-checkbox">
+                    <input type="checkbox" id="user-{{ user.id }}" value="{{ user.id }}">
+                    <label for="user-{{ user.id }}">{{ user.name }}</label>
+                </div>
+                {% endfor %}
+            </div>
+            <div style="margin-top: 20px; display: flex; gap: 10px;">
+                <button onclick="createChat()" style="flex: 1; padding: 10px; background: #27ae60; color: white; border: none; border-radius: 4px;">Создать</button>
+                <button onclick="hideCreateChatModal()" style="flex: 1; padding: 10px; background: #95a5a6; color: white; border: none; border-radius: 4px;">Отмена</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         class Chat {
             constructor() {
                 this.currentUser = {{ current_user.id }};
-                this.currentInterlocutor = null;
+                this.currentChat = null;
                 this.ws = null;
                 this.isConnected = false;
 
@@ -209,12 +240,12 @@
             }
 
             initializeEventListeners() {
-                // Выбор пользователя
-                document.querySelectorAll('.user-item').forEach(item => {
+                // Выбор чата
+                document.querySelectorAll('.chat-item').forEach(item => {
                     item.addEventListener('click', () => {
-                        this.selectUser(
-                            item.dataset.userId,
-                            item.dataset.userName
+                        this.selectChat(
+                            parseInt(item.dataset.chatId),
+                            item.textContent
                         );
                     });
                 });
@@ -224,7 +255,6 @@
                     this.sendMessage();
                 });
 
-                // Отправка по Enter
                 document.getElementById('messageInput').addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') {
                         this.sendMessage();
@@ -237,8 +267,6 @@
 
                 this.ws.onopen = () => {
                     this.isConnected = true;
-                    document.getElementById('connectionStatus').textContent = 'Подключен';
-                    document.getElementById('connectionStatus').className = 'connected';
                     console.log('WebSocket connected');
                 };
 
@@ -253,11 +281,7 @@
 
                 this.ws.onclose = () => {
                     this.isConnected = false;
-                    document.getElementById('connectionStatus').textContent = 'Не подключен';
-                    document.getElementById('connectionStatus').className = 'disconnected';
                     console.log('WebSocket disconnected');
-
-                    // Переподключение через 3 секунды
                     setTimeout(() => this.connectWebSocket(), 3000);
                 };
 
@@ -266,27 +290,27 @@
                 };
             }
 
-            async selectUser(userId, userName) {
-                this.currentInterlocutor = parseInt(userId);
+            async selectChat(chatId, chatTitle) {
+                this.currentChat = chatId;
 
                 // Обновляем UI
-                document.querySelectorAll('.user-item').forEach(item => {
+                document.querySelectorAll('.chat-item').forEach(item => {
                     item.classList.remove('active');
                 });
-                document.querySelector(`[data-user-id="${userId}"]`).classList.add('active');
+                document.querySelector(`[data-chat-id="${chatId}"]`).classList.add('active');
 
-                document.getElementById('currentChatTitle').textContent = `Чат с ${userName}`;
+                document.getElementById('currentChatTitle').textContent = chatTitle;
                 document.getElementById('messageInput').disabled = false;
                 document.getElementById('sendButton').disabled = false;
                 document.getElementById('noMessages').style.display = 'none';
 
                 // Загружаем историю сообщений
-                await this.loadMessageHistory(userId);
+                await this.loadMessageHistory(chatId);
             }
 
-            async loadMessageHistory(userId) {
+            async loadMessageHistory(chatId) {
                 try {
-                    const response = await fetch(`/chat/messages/${userId}`);
+                    const response = await fetch(`/chat/chats/${chatId}/messages`);
                     const messages = await response.json();
 
                     const container = document.getElementById('messagesContainer');
@@ -327,7 +351,7 @@
 
                 messageElement.innerHTML = `
                     ${message.sender_id !== this.currentUser ?
-                        `<div class="message-sender">${message.sender_name || 'Пользователь'}</div>` : ''}
+                        `<div class="message-sender">${message.sender_name}</div>` : ''}
                     <div class="message-content">${this.escapeHtml(message.content)}</div>
                     <div class="message-time">${time}</div>
                 `;
@@ -340,13 +364,13 @@
                 const input = document.getElementById('messageInput');
                 const content = input.value.trim();
 
-                if (!content || !this.currentInterlocutor || !this.isConnected) {
+                if (!content || !this.currentChat || !this.isConnected) {
                     return;
                 }
 
                 const message = {
                     type: 'message',
-                    recipient_id: this.currentInterlocutor,
+                    chat_id: this.currentChat,
                     content: content
                 };
 
@@ -356,12 +380,37 @@
 
             handleWebSocketMessage(data) {
                 if (data.type === 'message') {
-                    // Показываем сообщение только если оно относится к текущему собеседнику
-                    if (data.sender_id === this.currentInterlocutor ||
-                        data.recipient_id === this.currentInterlocutor) {
+                    // Показываем сообщение только если оно относится к текущему чату
+                    if (data.chat_id === this.currentChat) {
                         this.displayMessage(data);
                     }
+                } else if (data.type === 'chat_created') {
+                    // Добавляем новый чат в список
+                    this.addChatToList(data.chat);
                 }
+            }
+
+            addChatToList(chat) {
+                const chatsList = document.getElementById('chatsList');
+                const noChats = chatsList.querySelector('.no-chats');
+
+                if (noChats) {
+                    noChats.remove();
+                }
+
+                const chatItem = document.createElement('div');
+                chatItem.className = 'chat-item';
+                chatItem.dataset.chatId = chat.id;
+                chatItem.innerHTML = `
+                    <div>${chat.name || 'Без названия'}</div>
+                    <small>Новый чат</small>
+                `;
+
+                chatItem.addEventListener('click', () => {
+                    this.selectChat(chat.id, chat.name || 'Без названия');
+                });
+
+                chatsList.appendChild(chatItem);
             }
 
             scrollToBottom() {
@@ -374,6 +423,43 @@
                 div.textContent = text;
                 return div.innerHTML;
             }
+        }
+
+        // Функции для модального окна
+        function showCreateChatModal() {
+            document.getElementById('createChatModal').style.display = 'block';
+        }
+
+        function hideCreateChatModal() {
+            document.getElementById('createChatModal').style.display = 'none';
+        }
+
+        function createChat() {
+            const chatName = document.getElementById('chatNameInput').value;
+            const selectedUsers = [];
+
+            document.querySelectorAll('#usersList input[type="checkbox"]:checked').forEach(checkbox => {
+                selectedUsers.push(parseInt(checkbox.value));
+            });
+
+            if (selectedUsers.length === 0) {
+                alert('Выберите хотя бы одного участника');
+                return;
+            }
+
+            if (window.chat && window.chat.isConnected) {
+                window.chat.ws.send(JSON.stringify({
+                    type: 'create_chat',
+                    name: chatName,
+                    participant_ids: selectedUsers
+                }));
+            }
+
+            hideCreateChatModal();
+            document.getElementById('chatNameInput').value = '';
+            document.querySelectorAll('#usersList input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = false;
+            });
         }
 
         // Инициализация чата после загрузки страницы

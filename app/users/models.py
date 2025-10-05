@@ -1,6 +1,7 @@
 from sqlalchemy import String, Integer
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
+from typing import List
 
 
 class User(Base):
@@ -10,3 +11,10 @@ class User(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
     email: Mapped[str] = mapped_column(String, nullable=False)
+
+    # Добавляем связь с чатами
+    chats: Mapped[List["Chat"]] = relationship(  # type: ignore
+        "Chat",
+        secondary="chat_participants",
+        back_populates="participants"
+    )
