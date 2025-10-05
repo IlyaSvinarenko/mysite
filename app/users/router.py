@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Response, Request, Depends
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Response, Request, Depends, Form, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from typing import List
 from app.exceptions import UserAlreadyExistsException, IncorrectEmailOrPasswordException, PasswordMismatchException
@@ -14,12 +14,96 @@ templates = Jinja2Templates(directory='app/templates')
 
 
 @router.get("/", response_class=HTMLResponse, summary="Страница авторизации")
-async def get_auth_page(request: Request):
-    return templates.TemplateResponse("auth.html", {"request": request})
+async def get_auth_page(request: Request, message: str = None, message_type: str = None):
+    return templates.TemplateResponse("auth.html", {
+        "request": request,
+        "message": message,
+        "message_type": message_type
+    })
 
 
+# Форма регистрации
 @router.post("/register/")
-async def register_user(user_data: SUserRegister) -> dict:
+async def register_user_form(
+        request: Request,
+        email: str = Form(...),
+        username: str = Form(...),
+        password: str = Form(...),
+        password_check: str = Form(...)
+):
+    try:
+        # Проверяем существование пользователя
+        user = await UsersDAO.find_one_or_none(email=email)
+        if user:
+            return templates.TemplateResponse("auth.html", {
+                "request": request,
+                "message": "Пользователь с таким email уже существует",
+                "message_type": "error"
+            })
+
+        # Проверяем совпадение паролей
+        if password != password_check:
+            return templates.TemplateResponse("auth.html", {
+                "request": request,
+                "message": "Пароли не совпадают",
+                "message_type": "error"
+            })
+
+        # Хэшируем пароль и создаем пользователя
+        hashed_password = get_password_hash(password)
+        await UsersDAO.add(
+            name=username,
+            email=email,
+            hashed_password=hashed_password
+        )
+
+        return templates.TemplateResponse("auth.html", {
+            "request": request,
+            "message": "Регистрация успешна! Теперь вы можете войти.",
+            "message_type": "success"
+        })
+
+    except Exception as e:
+        return templates.TemplateResponse("auth.html", {
+            "request": request,
+            "message": f"Ошибка регистрации: {str(e)}",
+            "message_type": "error"
+        })
+
+
+# Форма авторизации
+@router.post("/login/")
+async def login_user_form(
+        request: Request,
+        response: Response,
+        email: str = Form(...),
+        password: str = Form(...)
+):
+    try:
+        user = await authenticate_user(email=email, password=password)
+        if not user:
+            return templates.TemplateResponse("auth.html", {
+                "request": request,
+                "message": "Неверный email или пароль",
+                "message_type": "error"
+            })
+
+        access_token = create_access_token({"sub": str(user.id)})
+        response = RedirectResponse(url="/chat/", status_code=status.HTTP_302_FOUND)
+        response.set_cookie(key="users_access_token", value=access_token, httponly=True)
+        return response
+
+    except Exception as e:
+        return templates.TemplateResponse("auth.html", {
+            "request": request,
+            "message": f"Ошибка авторизации: {str(e)}",
+            "message_type": "error"
+        })
+
+
+# JSON API для Swagger (сохраняем для обратной совместимости)
+@router.post("/api/register/")
+async def register_user_api(user_data: SUserRegister) -> dict:
     user = await UsersDAO.find_one_or_none(email=user_data.email)
     if user:
         raise UserAlreadyExistsException
@@ -36,8 +120,8 @@ async def register_user(user_data: SUserRegister) -> dict:
     return {'message': 'Вы успешно зарегистрированы!'}
 
 
-@router.post("/login/")
-async def auth_user(response: Response, user_data: SUserAuth):
+@router.post("/api/login/")
+async def auth_user_api(response: Response, user_data: SUserAuth):
     check = await authenticate_user(email=user_data.email, password=user_data.password)
     if check is None:
         raise IncorrectEmailOrPasswordException
@@ -48,8 +132,9 @@ async def auth_user(response: Response, user_data: SUserAuth):
 
 @router.post("/logout/")
 async def logout_user(response: Response):
+    response = RedirectResponse(url="/auth/", status_code=status.HTTP_302_FOUND)
     response.delete_cookie(key="users_access_token")
-    return {'message': 'Пользователь успешно вышел из системы'}
+    return response
 
 
 @router.get("/users", response_model=List[SUserRead])
