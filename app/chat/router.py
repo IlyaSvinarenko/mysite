@@ -1,5 +1,5 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, Form
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from typing import List, Dict
 from app.chat.dao import ChatsDAO, MessagesDAO
@@ -31,7 +31,7 @@ class ConnectionManager:
             del self.active_connections[user_id]
             logging.info(f"User {user_id} disconnected. Active connections: {len(self.active_connections)}")
 
-    async def send_to_user(self, user_id: int, message: dict):
+    async def send_personal_message(self, message: dict, user_id: int):
         if user_id in self.active_connections:
             try:
                 await self.active_connections[user_id].send_json(message)
@@ -41,14 +41,13 @@ class ConnectionManager:
 
     async def broadcast_to_chat(self, chat_id: int, message: dict, exclude_user_id: int = None):
         """Отправить сообщение всем участникам чата"""
-        # Получаем чат и его участников
         chat = await ChatsDAO.find_one_or_none_by_id(chat_id)
         if not chat:
             return
 
         for user in chat.participants:
             if user.id != exclude_user_id and user.id in self.active_connections:
-                await self.send_to_user(user.id, message)
+                await self.send_personal_message(message, user.id)
 
 
 manager = ConnectionManager()
@@ -91,34 +90,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
 
                         await manager.broadcast_to_chat(chat_id, response_data, exclude_user_id=user_id)
                         # Также отправляем обратно отправителю для подтверждения
-                        await manager.send_to_user(user_id, response_data)
-
-                elif message_data.get('type') == 'create_chat':
-                    # Создание нового чата
-                    chat_name = message_data.get('name')
-                    participant_ids = message_data.get('participant_ids', [])
-
-                    # Добавляем текущего пользователя в участники
-                    if user_id not in participant_ids:
-                        participant_ids.append(user_id)
-
-                    new_chat = await ChatsDAO.create_chat(
-                        name=chat_name,
-                        participant_ids=participant_ids
-                    )
-
-                    # Отправляем информацию о новом чате всем участникам
-                    chat_data = {
-                        'type': 'chat_created',
-                        'chat': {
-                            'id': new_chat.id,
-                            'name': new_chat.name,
-                            'created_at': new_chat.created_at.isoformat()
-                        }
-                    }
-
-                    for participant_id in participant_ids:
-                        await manager.send_to_user(participant_id, chat_data)
+                        await manager.send_personal_message(user_id, response_data)
 
             except json.JSONDecodeError:
                 await websocket.send_json({'error': 'Invalid JSON'})
@@ -144,6 +116,41 @@ async def get_chat_page(request: Request, current_user: User = Depends(get_curre
     })
 
 
+@router.post("/create", response_class=JSONResponse)
+async def create_chat(
+        request: Request,
+        chat_name: str = Form(None),
+        participant_ids: str = Form(...),
+        current_user: User = Depends(get_current_user)
+):
+    """Создать новый чат через форму"""
+    try:
+        # Парсим ID участников
+        participant_id_list = [int(pid.strip()) for pid in participant_ids.split(',') if pid.strip()]
+
+        # Добавляем текущего пользователя в участники
+        if current_user.id not in participant_id_list:
+            participant_id_list.append(current_user.id)
+
+        # Создаем чат
+        new_chat = await ChatsDAO.create_chat(
+            name=chat_name,
+            participant_ids=participant_id_list
+        )
+
+        return JSONResponse({
+            "success": True,
+            "chat_id": new_chat.id,
+            "message": "Чат успешно создан"
+        })
+
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=400)
+
+
 @router.get("/chats", response_model=List[ChatRead])
 async def get_user_chats(current_user: User = Depends(get_current_user)):
     """Получить все чаты пользователя"""
@@ -156,28 +163,7 @@ async def get_user_chats(current_user: User = Depends(get_current_user)):
     } for chat in chats]
 
 
-@router.post("/chats", response_model=ChatRead)
-async def create_chat(chat_data: ChatCreate, current_user: User = Depends(get_current_user)):
-    """Создать новый чат"""
-    # Добавляем текущего пользователя в участники
-    participant_ids = chat_data.participant_ids
-    if current_user.id not in participant_ids:
-        participant_ids.append(current_user.id)
-
-    new_chat = await ChatsDAO.create_chat(
-        name=chat_data.name,
-        participant_ids=participant_ids
-    )
-
-    return {
-        "id": new_chat.id,
-        "name": new_chat.name,
-        "created_at": new_chat.created_at,
-        "participant_count": len(new_chat.participants)
-    }
-
-
-@router.get("/chats/{chat_id}/messages", response_model=List[MessageRead])
+@router.get("/messages/{chat_id}", response_model=List[MessageRead])
 async def get_chat_messages(chat_id: int, current_user: User = Depends(get_current_user)):
     """Получить сообщения чата"""
     # Проверяем, что пользователь является участником чата
@@ -196,13 +182,39 @@ async def get_chat_messages(chat_id: int, current_user: User = Depends(get_curre
     } for message in messages]
 
 
-@router.post("/chats/{chat_id}/participants")
-async def add_participant(chat_id: int, user_id: int, current_user: User = Depends(get_current_user)):
-    """Добавить участника в чат"""
-    # Проверяем, что текущий пользователь является участником чата
-    chat = await ChatsDAO.find_one_or_none_by_id(chat_id)
+@router.post("/messages", response_model=MessageRead)
+async def send_message(message: MessageCreate, current_user: User = Depends(get_current_user)):
+    """Отправить сообщение в чат"""
+    # Проверяем, что пользователь является участником чата
+    chat = await ChatsDAO.find_one_or_none_by_id(message.chat_id)
     if not chat or current_user not in chat.participants:
         raise HTTPException(status_code=404, detail="Chat not found")
 
-    await ChatsDAO.add_participant_to_chat(chat_id, user_id)
-    return {"message": "Participant added successfully"}
+    new_message = await MessagesDAO.add_message(
+        chat_id=message.chat_id,
+        sender_id=current_user.id,
+        content=message.content
+    )
+
+    # Отправляем через WebSocket
+    sender = await UsersDAO.find_one_or_none_by_id(current_user.id)
+    message_data = {
+        'type': 'message',
+        'id': new_message.id,
+        'chat_id': message.chat_id,
+        'sender_id': current_user.id,
+        'sender_name': sender.name if sender else f"User{current_user.id}",
+        'content': message.content,
+        'created_at': new_message.created_at.isoformat()
+    }
+
+    await manager.broadcast_to_chat(message.chat_id, message_data, exclude_user_id=current_user.id)
+
+    return {
+        "id": new_message.id,
+        "chat_id": new_message.chat_id,
+        "sender_id": new_message.sender_id,
+        "sender_name": sender.name if sender else f"User{current_user.id}",
+        "content": new_message.content,
+        "created_at": new_message.created_at
+    }
