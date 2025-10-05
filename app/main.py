@@ -22,6 +22,18 @@ app.include_router(users_router)
 app.include_router(chat_router)
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Создаем таблицы автоматически при старте"""
+    from app.database import engine, Base
+    from app.users.models import User
+    from app.chat.models import Chat, Message
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    print("✅ Все таблицы созданы")
+
+
 @app.get("/")
 async def redirect_to_auth():
     return RedirectResponse(url="/auth")

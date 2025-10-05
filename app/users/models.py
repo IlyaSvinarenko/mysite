@@ -12,7 +12,9 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
     email: Mapped[str] = mapped_column(String, nullable=False)
 
-    # Добавляем связь с чатами
+    # created_at и updated_at уже есть в Base, не переопределяем
+
+    # Связь с чатами
     chats: Mapped[List["Chat"]] = relationship(  # type: ignore
         "Chat",
         secondary="chat_participants",
